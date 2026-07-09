@@ -1,0 +1,129 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import type { Message } from 'ollama';
+import { Agent, extractTextToolCalls } from '../src/agent.js';
+import { DEFAULT_CONFIG } from '../src/config.js';
+
+test('ignores plain text with no tool calls', () => {
+  const { calls, cleaned } = extractTextToolCalls('Here is how you can fix the bug in `app.ts`.');
+  assert.equal(calls.length, 0);
+  assert.equal(cleaned, 'Here is how you can fix the bug in `app.ts`.');
+});
+
+test('extracts a bare JSON tool call', () => {
+  const { calls, cleaned } = extractTextToolCalls('{"name": "read_file", "arguments": {"path": "src/app.ts"}}');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].function.name, 'read_file');
+  assert.deepEqual(calls[0].function.arguments, { path: 'src/app.ts' });
+  assert.equal(cleaned, '');
+});
+
+test('extracts a tool call inside a ```json fence', () => {
+  const content = 'Let me read that file.\n```json\n{"name": "read_file", "arguments": {"path": "a.txt"}}\n```';
+  const { calls, cleaned } = extractTextToolCalls(content);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].function.name, 'read_file');
+  assert.ok(cleaned.includes('Let me read that file.'));
+  assert.ok(!cleaned.includes('read_file'));
+});
+
+test('extracts a tool call inside <tool_call> tags', () => {
+  const content = '<tool_call>\n{"name": "list_dir", "arguments": {"path": "."}}\n</tool_call>';
+  const { calls, cleaned } = extractTextToolCalls(content);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].function.name, 'list_dir');
+  assert.equal(cleaned, '');
+});
+
+test('handles the {"function": {...}} wrapper shape', () => {
+  const content = '{"function": {"name": "glob", "arguments": {"pattern": "**/*.ts"}}}';
+  const { calls } = extractTextToolCalls(content);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].function.name, 'glob');
+  assert.deepEqual(calls[0].function.arguments, { pattern: '**/*.ts' });
+});
+
+test('accepts "parameters" as an alias for arguments', () => {
+  const { calls } = extractTextToolCalls('{"name": "grep", "parameters": {"pattern": "TODO"}}');
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].function.arguments, { pattern: 'TODO' });
+});
+
+test('ignores JSON naming an unknown tool', () => {
+  const content = '{"name": "rm_rf_everything", "arguments": {}}';
+  const { calls, cleaned } = extractTextToolCalls(content);
+  assert.equal(calls.length, 0);
+  assert.equal(cleaned, content);
+});
+
+test('handles braces and escaped quotes inside string arguments', () => {
+  const args = { path: 'a.ts', old_string: 'if (x) { return "y\\"z"; }', new_string: 'return { ok: true };' };
+  const content = `{"name": "edit_file", "arguments": ${JSON.stringify(args)}}`;
+  const { calls } = extractTextToolCalls(content);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].function.arguments, args);
+});
+
+test('extracts multiple tool calls and keeps surrounding prose', () => {
+  const content =
+    'First:\n{"name": "read_file", "arguments": {"path": "a"}}\nthen:\n{"name": "read_file", "arguments": {"path": "b"}}\ndone.';
+  const { calls, cleaned } = extractTextToolCalls(content);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(
+    calls.map((c) => (c.function.arguments as { path: string }).path),
+    ['a', 'b'],
+  );
+  assert.ok(cleaned.includes('First:'));
+  assert.ok(cleaned.includes('done.'));
+});
+
+test('does not treat unrelated JSON in prose as a tool call', () => {
+  const content = 'Set your config to {"name": "my-app", "version": "1.0.0"} and restart.';
+  const { calls, cleaned } = extractTextToolCalls(content);
+  assert.equal(calls.length, 0);
+  assert.equal(cleaned, content);
+});
+
+test('ignores unbalanced/truncated JSON', () => {
+  const content = '{"name": "read_file", "arguments": {"path": "a.txt"';
+  const { calls } = extractTextToolCalls(content);
+  assert.equal(calls.length, 0);
+});
+
+test('accepts the {"tool": ..., "args": ...} shape some models emit', () => {
+  const { calls } = extractTextToolCalls('{"tool": "list_dir", "args": {"path": "src"}}');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].function.name, 'list_dir');
+  assert.deepEqual(calls[0].function.arguments, { path: 'src' });
+});
+
+// --- Agent context management ---------------------------------------------------
+
+function makeAgent(numCtx = 200): Agent {
+  return new Agent({ ...DEFAULT_CONFIG, numCtx });
+}
+
+test('prune truncates old tool outputs but keeps the system prompt and recent turns', () => {
+  const agent = makeAgent(100); // budget ≈ 300 chars
+  const messages = agent.getMessages();
+  messages[0].content = 'system prompt'; // shrink so the budget math is predictable
+  messages.push({ role: 'user', content: 'read stuff' });
+  messages.push({ role: 'assistant', content: 'reading' });
+  messages.push({ role: 'tool', content: 'x'.repeat(5000), tool_name: 'read_file' } as Message);
+  for (let i = 0; i < 4; i++) {
+    messages.push({ role: 'user', content: `follow-up ${i}` });
+    messages.push({ role: 'assistant', content: `answer ${i}` });
+  }
+  (agent as unknown as { prune: () => void }).prune();
+  const after = agent.getMessages();
+  assert.equal(after[0].role, 'system');
+  const tool = after.find((m) => m.role === 'tool');
+  if (tool) assert.ok(tool.content.length <= 700, `old tool output should be truncated, got ${tool.content.length}`);
+  assert.ok(after.length >= 8, 'keeps a minimum conversation window');
+});
+
+test('estimatedTokens survives messages with missing content', () => {
+  const agent = makeAgent();
+  agent.getMessages().push({ role: 'assistant' } as unknown as Message);
+  assert.ok(Number.isFinite(agent.estimatedTokens()));
+});
