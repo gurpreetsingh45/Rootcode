@@ -128,6 +128,71 @@ test('edit_file rejects identical old and new strings', async () => {
   await assert.rejects(TOOLS.edit_file.run({ path: p, old_string: 'hello', new_string: 'hello' }), /identical/);
 });
 
+// --- multi_edit --------------------------------------------------------------
+
+test('multi_edit applies several edits in order', async () => {
+  const p = path.join(dir, 'f.ts');
+  fs.writeFileSync(p, 'const a = 1;\nconst b = 2;\n');
+  const res = await TOOLS.multi_edit.run({
+    path: p,
+    edits: [
+      { old_string: 'const a = 1;', new_string: 'const a = 10;' },
+      { old_string: 'const b = 2;', new_string: 'const b = 20;' },
+    ],
+  });
+  assert.equal(fs.readFileSync(p, 'utf8'), 'const a = 10;\nconst b = 20;\n');
+  assert.ok(res.output.includes('2 edits'));
+});
+
+test('multi_edit is atomic — a later failing edit leaves the file unchanged', async () => {
+  const p = path.join(dir, 'f.ts');
+  const original = 'const a = 1;\nconst b = 2;\n';
+  fs.writeFileSync(p, original);
+  await assert.rejects(
+    TOOLS.multi_edit.run({
+      path: p,
+      edits: [
+        { old_string: 'const a = 1;', new_string: 'const a = 10;' },
+        { old_string: 'nope', new_string: 'x' },
+      ],
+    }),
+    /edit 2 of 2 failed/,
+  );
+  assert.equal(fs.readFileSync(p, 'utf8'), original);
+});
+
+test('multi_edit lets one edit build on a previous one', async () => {
+  const p = path.join(dir, 'f.ts');
+  fs.writeFileSync(p, 'value = old;\n');
+  await TOOLS.multi_edit.run({
+    path: p,
+    edits: [
+      { old_string: 'old', new_string: 'mid' },
+      { old_string: 'mid', new_string: 'new' },
+    ],
+  });
+  assert.equal(fs.readFileSync(p, 'utf8'), 'value = new;\n');
+});
+
+test('multi_edit supports replace_all per edit', async () => {
+  const p = path.join(dir, 'f.ts');
+  fs.writeFileSync(p, 'foo foo\nbar\n');
+  await TOOLS.multi_edit.run({
+    path: p,
+    edits: [
+      { old_string: 'foo', new_string: 'baz', replace_all: true },
+      { old_string: 'bar', new_string: 'qux' },
+    ],
+  });
+  assert.equal(fs.readFileSync(p, 'utf8'), 'baz baz\nqux\n');
+});
+
+test('multi_edit rejects an empty edits array', async () => {
+  const p = path.join(dir, 'f.ts');
+  fs.writeFileSync(p, 'x');
+  await assert.rejects(TOOLS.multi_edit.run({ path: p, edits: [] }), /at least one edit/);
+});
+
 // --- glob / grep / list_dir ---------------------------------------------------
 
 test('glob finds matches and skips node_modules', async () => {

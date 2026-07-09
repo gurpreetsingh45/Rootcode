@@ -4,3 +4,6 @@ dist/
 
 # Internal security audit notes — not for publication
 SECURITY_FINDINGS.md
+
+# Internal planning notes — not for publication
+IMPROVEMENTS.md
