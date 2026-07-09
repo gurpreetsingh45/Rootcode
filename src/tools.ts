@@ -38,9 +38,23 @@ function truncate(text: string, limit = MAX_OUTPUT_CHARS): string {
   return text.slice(0, limit) + `\n... [truncated, ${text.length - limit} more characters]`;
 }
 
+/**
+ * Resolve a tool-supplied path against the project root, confining it there.
+ * Absolute paths outside the project and `..` escapes are rejected so a model
+ * turn (including one steered by injected file content) can't read or write
+ * arbitrary locations on disk. Note: this is a lexical check; it does not chase
+ * symlinks that themselves point outside the project.
+ */
 function resolvePath(p: unknown): string {
   const raw = typeof p === 'string' && p.length > 0 ? p : '.';
-  return path.resolve(process.cwd(), raw);
+  const root = process.cwd();
+  const resolved = path.resolve(root, raw);
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+    throw new Error(
+      `path "${raw}" is outside the project directory (${root}). This agent only operates within the current project.`,
+    );
+  }
+  return resolved;
 }
 
 function str(args: Record<string, unknown>, key: string): string {
@@ -519,7 +533,12 @@ export function isSafeCommand(command: string): boolean {
   if (head === 'find') return !args.some((a) => /^-(delete|exec|execdir|ok|okdir|fprint|fls)/.test(a));
   if (head === 'git') {
     const [sub, ...rest] = args;
-    if (READONLY_GIT_SUBCOMMANDS.has(sub)) return true;
+    if (READONLY_GIT_SUBCOMMANDS.has(sub)) {
+      // diff/log/show/etc. run through git's diff machinery, which accepts
+      // --output=<file> (and -o <file>) to write output to an arbitrary path.
+      // That is not read-only, so such a command must go through the prompt.
+      return !rest.some((a) => a === '-o' || a === '--output' || a.startsWith('--output='));
+    }
     // listing forms only — a non-flag argument would create/delete things
     if (sub === 'branch' || sub === 'remote' || sub === 'tag') {
       return rest.every((a) => ['-v', '-vv', '-a', '-l', '--list'].includes(a));

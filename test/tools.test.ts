@@ -6,13 +6,37 @@ import path from 'node:path';
 import { TOOLS } from '../src/tools.js';
 
 let dir: string;
+const ORIGINAL_CWD = process.cwd();
 
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rootcode-test-'));
+  // realpath so the temp dir matches process.cwd() even if os.tmpdir() is a symlink.
+  dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'rootcode-test-')));
+  // The file tools confine operations to process.cwd(), so run each test with
+  // the temp dir as the project root.
+  process.chdir(dir);
 });
 
 afterEach(() => {
+  process.chdir(ORIGINAL_CWD);
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// --- path containment --------------------------------------------------------
+
+test('file tools reject paths outside the project directory', async () => {
+  await assert.rejects(TOOLS.read_file.run({ path: '/etc/passwd' }), /outside the project/);
+  await assert.rejects(TOOLS.read_file.run({ path: '../../../../etc/passwd' }), /outside the project/);
+  await assert.rejects(TOOLS.write_file.run({ path: '/tmp/rootcode-evil', content: 'x' }), /outside the project/);
+  await assert.rejects(TOOLS.list_dir.run({ path: '/etc' }), /outside the project/);
+  await assert.rejects(TOOLS.grep.run({ pattern: 'x', path: '/etc' }), /outside the project/);
+});
+
+test('file tools accept paths inside the project directory', async () => {
+  fs.writeFileSync(path.join(dir, 'inside.txt'), 'ok\n');
+  const rel = await TOOLS.read_file.run({ path: 'inside.txt' });
+  assert.ok(rel.output.includes('ok'));
+  const abs = await TOOLS.read_file.run({ path: path.join(dir, 'inside.txt') });
+  assert.ok(abs.output.includes('ok'));
 });
 
 // --- read_file ---------------------------------------------------------------
@@ -341,6 +365,11 @@ test('bash permission gate: destructive flags of read-only tools need approval',
   assert.equal(needs('git branch new-feature'), true);
   assert.equal(needs('git remote add origin http://evil'), true);
   assert.equal(needs('git stash'), true); // stashes (mutates) the working tree
+  // git's diff machinery can write to an arbitrary file via --output/-o
+  assert.equal(needs('git diff --output=/home/user/.bashrc HEAD'), true);
+  assert.equal(needs('git diff --output /tmp/x HEAD'), true);
+  assert.equal(needs('git log -o /tmp/x'), true);
+  assert.equal(needs('git show --output=/tmp/x HEAD'), true);
 });
 
 test('bash permission gate: common read-only forms stay prompt-free', () => {
