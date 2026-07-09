@@ -8,7 +8,7 @@ import { TOOLS } from '../src/tools.js';
 let dir: string;
 
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-test-'));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rootcode-test-'));
 });
 
 afterEach(() => {
@@ -270,6 +270,8 @@ test('bash permission gate: destructive flags of read-only tools need approval',
   const needs = (command: string) => TOOLS.bash.needsPermission({ command });
   assert.equal(needs('find . -name "*.tmp" -delete'), true);
   assert.equal(needs('find . -exec rm {} +'), true);
+  assert.equal(needs('find . -maxdepth 0 -fls /etc/passwd'), true); // -fls truncates/writes a file
+  assert.equal(needs('find . -fprintf out.txt "%p"'), true); // -fprintf writes a file
   assert.equal(needs('git branch -D main'), true);
   assert.equal(needs('git branch new-feature'), true);
   assert.equal(needs('git remote add origin http://evil'), true);

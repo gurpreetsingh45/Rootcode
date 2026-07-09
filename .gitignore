@@ -1,3 +1,6 @@
 node_modules/
 dist/
 *.log
+
+# Internal security audit notes — not for publication
+SECURITY_FINDINGS.md

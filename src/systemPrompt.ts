@@ -13,7 +13,7 @@ function tryExec(cmd: string): string {
 
 /** Project instructions file, like CLAUDE.md. */
 function loadProjectInstructions(): string {
-  for (const name of ['VIBE.md', 'AGENTS.md', 'CLAUDE.md']) {
+  for (const name of ['ROOTCODE.md', 'AGENTS.md', 'CLAUDE.md']) {
     const p = path.join(process.cwd(), name);
     if (fs.existsSync(p)) {
       try {
@@ -43,7 +43,7 @@ export function buildSystemPrompt(): string {
   const gitBranch = tryExec('git branch --show-current');
   const gitInfo = gitBranch ? `\nGit branch: ${gitBranch}` : '\nNot a git repository.';
 
-  return `You are vibe, a CLI coding agent running locally. You help with software engineering tasks: writing code, fixing bugs, refactoring, explaining code, and running commands.
+  return `You are rootcode, a CLI coding agent running locally. You help with software engineering tasks: writing code, fixing bugs, refactoring, explaining code, and running commands.
 
 # Environment
 Working directory: ${process.cwd()}

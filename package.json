@@ -1,15 +1,15 @@
 {
-  "name": "vibe-agent",
+  "name": "rootcode",
   "version": "0.1.0",
   "description": "A local CLI coding agent powered by Ollama — like Claude Code, but running entirely on your machine.",
   "type": "module",
   "bin": {
-    "vibe": "bin/vibe.js"
+    "rootcode": "bin/rootcode.js"
   },
   "scripts": {
     "dev": "tsx src/index.tsx",
     "build": "tsc",
-    "start": "node bin/vibe.js",
+    "start": "node bin/rootcode.js",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts"
   },

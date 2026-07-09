@@ -21,7 +21,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   { name: '/resume', description: 'list past sessions, /resume <n> to restore one' },
   { name: '/compact', description: 'summarize conversation to free context' },
   { name: '/yolo', description: 'toggle auto-approval of all tools' },
-  { name: '/exit', description: 'quit vibe' },
+  { name: '/exit', description: 'quit rootcode' },
 ];
 
 const HELP_TEXT = `commands:

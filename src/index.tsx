@@ -7,15 +7,15 @@ import { loadConfig } from './config.js';
 import { latestSession, formatAge } from './sessions.js';
 import { App } from './ui/App.js';
 
-const USAGE = `vibe — local CLI coding agent powered by Ollama
+const USAGE = `rootcode — local CLI coding agent powered by Ollama
 
 usage:
-  vibe                       start interactive session
-  vibe "fix the tests"       start interactive session with an initial prompt
-  vibe -p "list the files"   headless mode: run one prompt, print, exit
+  rootcode                       start interactive session
+  rootcode "fix the tests"       start interactive session with an initial prompt
+  rootcode -p "list the files"   headless mode: run one prompt, print, exit
 
 options:
-  -m, --model <name>   Ollama model to use (default from ~/.config/vibe/config.json)
+  -m, --model <name>   Ollama model to use (default from ~/.config/rootcode/config.json)
   -p, --print <text>   run a single prompt non-interactively and exit
   -c, --continue       resume the most recent session in this directory
       --host <url>     Ollama host (default http://127.0.0.1:11434)
@@ -44,7 +44,7 @@ async function main() {
     return;
   }
   if (values.version) {
-    console.log('vibe 0.1.0');
+    console.log('rootcode 0.1.0');
     return;
   }
 
