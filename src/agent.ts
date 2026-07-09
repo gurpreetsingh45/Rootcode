@@ -339,7 +339,10 @@ function scanJsonObject(s: string, start: number): string | null {
 export function extractTextToolCalls(content: string): { calls: ToolCall[]; cleaned: string } {
   const calls: ToolCall[] = [];
   const ranges: Array<[number, number]> = [];
-  const starter = /\{\s*"(?:name|tool|function)"/g;
+  // Trigger on the object's first key. Models order keys differently: some put
+  // "name" first, others (Hermes/Qwen) emit {"arguments": ..., "name": ...},
+  // so we also start scanning on the argument-container keys.
+  const starter = /\{\s*"(?:name|tool|function|function_name|arguments|parameters|args)"/g;
   let match: RegExpExecArray | null;
   let scanFrom = 0;
   while ((match = starter.exec(content)) !== null) {
@@ -349,7 +352,7 @@ export function extractTextToolCalls(content: string): { calls: ToolCall[]; clea
     try {
       const obj = JSON.parse(json);
       const fn = typeof obj.function === 'object' && obj.function ? obj.function : obj;
-      const name: unknown = fn.name ?? fn.tool;
+      const name: unknown = fn.name ?? fn.tool ?? fn.function_name ?? fn.recipient_name;
       const rawArgs: unknown = fn.arguments ?? fn.parameters ?? fn.args ?? {};
       // Some models emit arguments as a JSON-encoded string rather than an
       // object; coerceArgs parses those so the call still runs.

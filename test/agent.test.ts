@@ -117,6 +117,36 @@ test('coerceArgs normalizes object, string, and invalid arguments', () => {
   assert.deepEqual(coerceArgs(null), {});
 });
 
+test('recovers a call when "name" comes after "arguments" (Hermes/Qwen order)', () => {
+  // Hermes/Qwen-style models emit {"arguments": ..., "name": ...}. The starter
+  // must not assume "name" is the first key, or these calls are dropped.
+  const { calls } = extractTextToolCalls('{"arguments": {"path": "a.ts"}, "name": "read_file"}');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].function.name, 'read_file');
+  assert.deepEqual(calls[0].function.arguments, { path: 'a.ts' });
+});
+
+test('recovers an args-first call wrapped in <tool_call> tags', () => {
+  const content = '<tool_call>\n{"arguments": {"path": "a.ts"}, "name": "read_file"}\n</tool_call>';
+  const { calls, cleaned } = extractTextToolCalls(content);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].function.name, 'read_file');
+  assert.equal(cleaned, '');
+});
+
+test('accepts the "function_name" key some models emit', () => {
+  const { calls } = extractTextToolCalls('{"function_name": "list_dir", "arguments": {"path": "src"}}');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].function.name, 'list_dir');
+});
+
+test('ignores JSON objects that do not name a known tool', () => {
+  // Broadening the starter to "arguments" must not turn arbitrary prose JSON
+  // into tool calls.
+  assert.equal(extractTextToolCalls('config: {"arguments": {"x": 1}, "port": 8080}').calls.length, 0);
+  assert.equal(extractTextToolCalls('{"name": "delete_everything", "arguments": {}}').calls.length, 0);
+});
+
 // --- Agent context management ---------------------------------------------------
 
 function makeAgent(numCtx = 200): Agent {
