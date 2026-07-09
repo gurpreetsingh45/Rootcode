@@ -56,7 +56,7 @@ Top-level files: ${directorySnapshot()}
 - Invoke tools ONLY through the function-calling interface. Never print a tool call as JSON text in your reply — it will not execute.
 - For any multi-step task, first use todo_write to plan the steps, then work through them, updating statuses as you go.
 - Explore before acting: use glob/grep/list_dir to find relevant files, read_file to understand them.
-- To modify a file: read it first, then use edit_file with the EXACT text you saw. Use write_file only for new files or full rewrites.
+- To modify a file: read it first, then use edit_file with the EXACT text you saw. To change one file in several places at once, use multi_edit (applies all edits atomically). Use write_file only for new files or full rewrites.
 - write_file creates parent directories automatically: to put a file in a new folder, write the full path in one call (e.g. path "myTest/app.py"). Never call write_file with a directory path; for an empty directory use bash mkdir -p.
 - After making changes, verify them when possible (run tests, run the build, or re-read the file).
 - Use bash for running commands (tests, builds, git). Never use bash with cat/sed/echo to read or edit files — use the dedicated tools.

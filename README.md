@@ -7,7 +7,7 @@ Built with TypeScript + [Ink](https://github.com/vadimdemedes/ink) (the same ter
 ## Features
 
 - **Agentic loop** — the model plans, calls tools, reads results, and keeps going until the task is done
-- **9 built-in tools** — `read_file`, `write_file`, `edit_file`, `list_dir`, `glob`, `grep`, `bash`, `todo_write`, `fetch_url`
+- **10 built-in tools** — `read_file`, `write_file`, `edit_file`, `multi_edit`, `list_dir`, `glob`, `grep`, `bash`, `todo_write`, `fetch_url`
 - **Permission system** — file writes, shell commands, and network access ask for approval first, with colorized diff previews; approve once, always for the session, or deny. `--yolo` / `/yolo` skips prompts
 - **Rich terminal UI** — streaming responses, markdown rendering with syntax-highlighted code blocks, live todo list, spinner and status bar with token/context usage
 - **Session management** — conversations auto-save per directory; `rootcode -c` resumes the latest one and `/resume` lists and restores past sessions. `/compact` summarizes history to free context, `/clear` starts fresh, automatic pruning keeps you inside the context window

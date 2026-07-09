@@ -234,6 +234,95 @@ function applyEdit(content: string, oldString: string, newString: string, replac
 }
 
 // ---------------------------------------------------------------------------
+// multi_edit
+
+interface EditOp {
+  old_string: string;
+  new_string: string;
+  replace_all?: boolean;
+}
+
+/** Coerce the raw `edits` argument into a validated list of edit ops. */
+function parseEdits(raw: unknown): EditOp[] {
+  if (!Array.isArray(raw)) throw new Error('edits must be an array of {old_string, new_string} objects');
+  if (raw.length === 0) throw new Error('edits must contain at least one edit');
+  return raw.map((e, i) => {
+    if (typeof e !== 'object' || e === null) throw new Error(`edits[${i}] must be an object`);
+    const op = e as Record<string, unknown>;
+    if (typeof op.old_string !== 'string') throw new Error(`edits[${i}].old_string must be a string`);
+    if (typeof op.new_string !== 'string') throw new Error(`edits[${i}].new_string must be a string`);
+    return { old_string: op.old_string, new_string: op.new_string, replace_all: Boolean(op.replace_all) };
+  });
+}
+
+/** Apply all edits in order to `content`, failing if any single edit does not apply. */
+function applyEdits(content: string, edits: EditOp[]): string {
+  let next = content;
+  edits.forEach((e, i) => {
+    try {
+      next = applyEdit(next, e.old_string, e.new_string, Boolean(e.replace_all));
+    } catch (err) {
+      throw new Error(`edit ${i + 1} of ${edits.length} failed: ${(err as Error).message}`);
+    }
+  });
+  return next;
+}
+
+const multiEdit: ToolSpec = {
+  definition: {
+    type: 'function',
+    function: {
+      name: 'multi_edit',
+      description:
+        'Apply several exact-string edits to a single file in one atomic operation. Edits are applied in order; each old_string must match exactly (like edit_file). If any edit fails, the file is left unchanged. Prefer this over multiple edit_file calls when changing one file in several places.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'Path to the file' },
+          edits: {
+            type: 'array',
+            description: 'List of edits to apply in order',
+            items: {
+              type: 'object',
+              properties: {
+                old_string: { type: 'string', description: 'Exact text to find' },
+                new_string: { type: 'string', description: 'Replacement text' },
+                replace_all: { type: 'boolean', description: 'Replace every occurrence (default false)' },
+              },
+              required: ['old_string', 'new_string'],
+            },
+          },
+        },
+        required: ['path', 'edits'],
+      },
+    },
+  },
+  title: (a) => `Edit ${a.path} (${Array.isArray(a.edits) ? a.edits.length : 0} edits)`,
+  needsPermission: () => true,
+  preview: (args) => {
+    try {
+      const p = resolvePath(String(args.path ?? ''));
+      const content = fs.readFileSync(p, 'utf8');
+      const next = applyEdits(content, parseEdits(args.edits));
+      return computeDiffLines(content, next, String(args.path));
+    } catch (err) {
+      return [{ kind: 'meta', text: `(preview unavailable: ${(err as Error).message})` }];
+    }
+  },
+  run: async (args) => {
+    const p = resolvePath(str(args, 'path'));
+    const edits = parseEdits(args.edits);
+    const content = fs.readFileSync(p, 'utf8');
+    const next = applyEdits(content, edits);
+    fs.writeFileSync(p, next);
+    return {
+      output: `Edited ${p} (${edits.length} edits)`,
+      diffLines: computeDiffLines(content, next, p),
+    };
+  },
+};
+
+// ---------------------------------------------------------------------------
 // list_dir
 
 const listDir: ToolSpec = {
@@ -595,6 +684,7 @@ export const TOOLS: Record<string, ToolSpec> = {
   read_file: readFile,
   write_file: writeFile,
   edit_file: editFile,
+  multi_edit: multiEdit,
   list_dir: listDir,
   glob: globTool,
   grep: grepTool,
