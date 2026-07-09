@@ -21,7 +21,7 @@ export const DEFAULT_CONFIG: Config = {
   yolo: false,
 };
 
-export const CONFIG_DIR = path.join(os.homedir(), '.config', 'vibe');
+export const CONFIG_DIR = path.join(os.homedir(), '.config', 'rootcode');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
 
 export function loadConfig(configPath = CONFIG_PATH): Config {

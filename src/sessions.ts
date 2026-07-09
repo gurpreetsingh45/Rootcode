@@ -22,7 +22,7 @@ export interface SessionSummary {
   messageCount: number;
 }
 
-const DEFAULT_DIR = path.join(os.homedir(), '.local', 'share', 'vibe', 'sessions');
+const DEFAULT_DIR = path.join(os.homedir(), '.local', 'share', 'rootcode', 'sessions');
 const MAX_SESSIONS = 50;
 
 export function newSessionId(): string {

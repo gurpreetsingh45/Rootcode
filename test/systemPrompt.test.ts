@@ -10,7 +10,7 @@ let originalCwd: string;
 
 beforeEach(() => {
   originalCwd = process.cwd();
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-prompt-'));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rootcode-prompt-'));
   process.chdir(dir);
 });
 
@@ -28,19 +28,19 @@ test('includes the working directory and a directory snapshot', () => {
   assert.ok(prompt.includes('src/'));
 });
 
-test('loads project instructions from VIBE.md when present', () => {
-  fs.writeFileSync(path.join(dir, 'VIBE.md'), 'Always use tabs.');
+test('loads project instructions from ROOTCODE.md when present', () => {
+  fs.writeFileSync(path.join(dir, 'ROOTCODE.md'), 'Always use tabs.');
   const prompt = buildSystemPrompt();
-  assert.ok(prompt.includes('Project instructions (from VIBE.md)'));
+  assert.ok(prompt.includes('Project instructions (from ROOTCODE.md)'));
   assert.ok(prompt.includes('Always use tabs.'));
 });
 
-test('prefers VIBE.md over CLAUDE.md but falls back to it', () => {
+test('prefers ROOTCODE.md over CLAUDE.md but falls back to it', () => {
   fs.writeFileSync(path.join(dir, 'CLAUDE.md'), 'claude rules');
   assert.ok(buildSystemPrompt().includes('claude rules'));
-  fs.writeFileSync(path.join(dir, 'VIBE.md'), 'vibe rules');
+  fs.writeFileSync(path.join(dir, 'ROOTCODE.md'), 'rootcode rules');
   const prompt = buildSystemPrompt();
-  assert.ok(prompt.includes('vibe rules'));
+  assert.ok(prompt.includes('rootcode rules'));
   assert.ok(!prompt.includes('claude rules'));
 });
 

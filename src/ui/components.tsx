@@ -96,7 +96,7 @@ export function PermissionPrompt({
         <Text color="yellow" bold>
           ⚠ permission
         </Text>
-        <Text> vibe wants to run: </Text>
+        <Text> rootcode wants to run: </Text>
         <Text bold>{request.title}</Text>
       </Text>
       {request.preview.length > 0 && (
@@ -150,7 +150,7 @@ export function ItemView({ item }: { item: Item }) {
         <Box flexDirection="column" borderStyle="round" borderColor="magenta" paddingX={2} marginBottom={1}>
           <Text>
             <Text color="magenta" bold>
-              ✻ vibe
+              ✻ rootcode
             </Text>
             <Text dimColor> v{item.version} — local coding agent</Text>
           </Text>

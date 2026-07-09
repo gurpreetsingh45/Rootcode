@@ -9,7 +9,7 @@ let dir: string;
 let historyPath: string;
 
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-history-'));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rootcode-history-'));
   historyPath = path.join(dir, 'history.json');
 });
 

@@ -14,8 +14,8 @@ import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 
 // Sessions persist under $HOME — point HOME at a sandbox BEFORE loading src modules,
-// so tests never touch the real ~/.local/share/vibe.
-const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-home-'));
+// so tests never touch the real ~/.local/share/rootcode.
+const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'rootcode-home-'));
 process.env.HOME = fakeHome;
 
 const { Agent, InterruptedError } = await import('../src/agent.js');
@@ -131,7 +131,7 @@ let originalCwd: string;
 
 beforeEach(() => {
   originalCwd = process.cwd();
-  workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-ws-'));
+  workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'rootcode-ws-'));
   process.chdir(workspace);
   mock = new MockOllama();
 });
@@ -176,7 +176,7 @@ test('persists the session to disk under $HOME after a run', async () => {
   const agent = await makeAgent([textReply('hi!')]);
   const { callbacks } = recordCallbacks();
   await agent.run('hello session-persist-check', callbacks);
-  const sessionsDir = path.join(fakeHome, '.local', 'share', 'vibe', 'sessions');
+  const sessionsDir = path.join(fakeHome, '.local', 'share', 'rootcode', 'sessions');
   const saved = fs
     .readdirSync(sessionsDir)
     .filter((f) => f.endsWith('.json'))

@@ -18,7 +18,7 @@ import {
 let dir: string;
 
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-sessions-'));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rootcode-sessions-'));
 });
 
 afterEach(() => {

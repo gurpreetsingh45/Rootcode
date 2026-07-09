@@ -1,4 +1,4 @@
-# ✻ vibe
+# ✻ rootcode
 
 A local CLI coding agent powered by [Ollama](https://ollama.com) — like Claude Code, but running entirely on your machine. No API keys, no cloud, your code never leaves your computer.
 
@@ -10,10 +10,10 @@ Built with TypeScript + [Ink](https://github.com/vadimdemedes/ink) (the same ter
 - **9 built-in tools** — `read_file`, `write_file`, `edit_file`, `list_dir`, `glob`, `grep`, `bash`, `todo_write`, `fetch_url`
 - **Permission system** — file writes, shell commands, and network access ask for approval first, with colorized diff previews; approve once, always for the session, or deny. `--yolo` / `/yolo` skips prompts
 - **Rich terminal UI** — streaming responses, markdown rendering with syntax-highlighted code blocks, live todo list, spinner and status bar with token/context usage
-- **Session management** — conversations auto-save per directory; `vibe -c` resumes the latest one and `/resume` lists and restores past sessions. `/compact` summarizes history to free context, `/clear` starts fresh, automatic pruning keeps you inside the context window
+- **Session management** — conversations auto-save per directory; `rootcode -c` resumes the latest one and `/resume` lists and restores past sessions. `/compact` summarizes history to free context, `/clear` starts fresh, automatic pruning keeps you inside the context window
 - **Input niceties** — persistent history (up/down), slash-command completion (tab), multiline input (`\` + enter), esc to interrupt the agent mid-task
-- **Headless mode** — `vibe -p "..."` for scripting and pipelines
-- **Project instructions** — put a `VIBE.md` (or `AGENTS.md`/`CLAUDE.md`) in your repo and it's loaded into the system prompt
+- **Headless mode** — `rootcode -p "..."` for scripting and pipelines
+- **Project instructions** — put a `ROOTCODE.md` (or `AGENTS.md`/`CLAUDE.md`) in your repo and it's loaded into the system prompt
 
 ## Requirements
 
@@ -30,20 +30,20 @@ ollama pull qwen2.5-coder:7b   # recommended default
 ```bash
 npm install
 npm run build
-npm link        # makes the `vibe` command available globally
+npm link        # makes the `rootcode` command available globally
 ```
 
 ## Usage
 
 ```bash
 cd your/project
-vibe                        # interactive session
-vibe "fix the failing test" # interactive, starts on a task
-vibe -c                     # resume the most recent session in this directory
-vibe -p "explain src/app.ts"          # headless: one prompt, print, exit
-vibe -p "add a .gitignore" --yolo     # headless with writes allowed
-vibe -c -p "now add tests for it"     # headless, continuing the last session
-vibe -m llama3.1 --ctx 32768          # pick model / context size
+rootcode                        # interactive session
+rootcode "fix the failing test" # interactive, starts on a task
+rootcode -c                     # resume the most recent session in this directory
+rootcode -p "explain src/app.ts"          # headless: one prompt, print, exit
+rootcode -p "add a .gitignore" --yolo     # headless with writes allowed
+rootcode -c -p "now add tests for it"     # headless, continuing the last session
+rootcode -m llama3.1 --ctx 32768          # pick model / context size
 ```
 
 ### Slash commands
@@ -72,7 +72,7 @@ vibe -m llama3.1 --ctx 32768          # pick model / context size
 
 ## Configuration
 
-`~/.config/vibe/config.json`:
+`~/.config/rootcode/config.json`:
 
 ```json
 {
@@ -83,7 +83,7 @@ vibe -m llama3.1 --ctx 32768          # pick model / context size
 }
 ```
 
-`numCtx` matters: Ollama defaults to a small context window; vibe requests 16k by default. Raise it if your machine has the memory (`--ctx 32768`), lower it if the model runs slowly.
+`numCtx` matters: Ollama defaults to a small context window; rootcode requests 16k by default. Raise it if your machine has the memory (`--ctx 32768`), lower it if the model runs slowly.
 
 ## Development
 
@@ -102,8 +102,8 @@ src/
   agent.ts         the agentic loop: streaming chat, tool dispatch, permissions, context pruning
   tools.ts         tool schemas + implementations
   systemPrompt.ts  system prompt with environment context and project instructions
-  sessions.ts      conversation persistence (~/.local/share/vibe/sessions/)
-  config.ts        ~/.config/vibe/config.json
+  sessions.ts      conversation persistence (~/.local/share/rootcode/sessions/)
+  config.ts        ~/.config/rootcode/config.json
   history.ts       persistent input history
   ui/
     App.tsx        main Ink component: transcript, input, permission dialogs, status bar

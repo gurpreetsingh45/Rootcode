@@ -422,8 +422,12 @@ export function isSafeCommand(command: string): boolean {
   // `env CMD` / `date -s` run or mutate things; bare invocations only print
   if (head === 'env') return args.length === 0;
   if (head === 'date') return !args.some((a) => a === '-s' || a.startsWith('--set'));
-  // find is read-only unless told to delete or execute
-  if (head === 'find') return !args.some((a) => /^-(delete|exec|execdir|ok|okdir|fprint)/.test(a));
+  // find is read-only unless told to delete, execute, or WRITE a file.
+  // Write actions: -delete, -exec*/-ok* (run commands), and the file-writing
+  // primaries -fls, -fprint, -fprint0, -fprintf (they create/truncate a file).
+  // -fls was previously missed, letting `find . -fls /path` truncate any file
+  // with no approval.
+  if (head === 'find') return !args.some((a) => /^-(delete|exec|execdir|ok|okdir|fprint|fls)/.test(a));
   if (head === 'git') {
     const [sub, ...rest] = args;
     if (READONLY_GIT_SUBCOMMANDS.has(sub)) return true;
@@ -565,7 +569,7 @@ const fetchUrl: ToolSpec = {
     if (!/^https?:\/\//.test(url)) throw new Error('only http(s) URLs are supported');
     const res = await fetch(url, {
       signal: AbortSignal.timeout(20_000),
-      headers: { 'user-agent': 'vibe-agent/0.1' },
+      headers: { 'user-agent': 'rootcode/0.1' },
     });
     const contentType = res.headers.get('content-type') ?? '';
     let body = await res.text();

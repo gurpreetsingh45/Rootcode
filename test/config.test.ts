@@ -9,7 +9,7 @@ let dir: string;
 let configPath: string;
 
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-config-'));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rootcode-config-'));
   configPath = path.join(dir, 'nested', 'config.json');
 });
 
