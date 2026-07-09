@@ -206,7 +206,7 @@ export class Agent {
     const name = call.function.name;
     const spec = TOOLS[name];
     const id = this.nextToolId++;
-    const args = (call.function.arguments ?? {}) as Record<string, unknown>;
+    const args = coerceArgs(call.function.arguments);
 
     if (!spec) {
       cb.onToolEnd(id, name, name, `Unknown tool: ${name}`, true);
@@ -278,6 +278,32 @@ export class Agent {
   }
 }
 
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Normalize a tool call's raw `arguments` into a plain object. Ollama's typed
+ * API returns an object, but many local models (and the text-recovery path)
+ * hand back a JSON-encoded string like `"{\"path\":\"a.py\"}"`. Parse those so
+ * the tool actually runs instead of silently receiving empty arguments — which
+ * makes the model report a file was written that never got created.
+ */
+export function coerceArgs(raw: unknown): Record<string, unknown> {
+  if (isPlainObject(raw)) return raw;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return {};
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (isPlainObject(parsed)) return parsed;
+    } catch {
+      /* not JSON — fall through to empty args */
+    }
+  }
+  return {};
+}
+
 /** Extract a balanced JSON object starting at `start`, respecting strings. */
 function scanJsonObject(s: string, start: number): string | null {
   let depth = 0;
@@ -324,9 +350,12 @@ export function extractTextToolCalls(content: string): { calls: ToolCall[]; clea
       const obj = JSON.parse(json);
       const fn = typeof obj.function === 'object' && obj.function ? obj.function : obj;
       const name: unknown = fn.name ?? fn.tool;
-      const args: unknown = fn.arguments ?? fn.parameters ?? fn.args ?? {};
-      if (typeof name === 'string' && TOOLS[name] && args && typeof args === 'object') {
-        calls.push({ function: { name, arguments: args as Record<string, unknown> } } as ToolCall);
+      const rawArgs: unknown = fn.arguments ?? fn.parameters ?? fn.args ?? {};
+      // Some models emit arguments as a JSON-encoded string rather than an
+      // object; coerceArgs parses those so the call still runs.
+      const args = coerceArgs(rawArgs);
+      if (typeof name === 'string' && TOOLS[name] && (isPlainObject(rawArgs) || typeof rawArgs === 'string')) {
+        calls.push({ function: { name, arguments: args } } as ToolCall);
         ranges.push([match.index, match.index + json.length]);
         scanFrom = match.index + json.length;
         starter.lastIndex = scanFrom;

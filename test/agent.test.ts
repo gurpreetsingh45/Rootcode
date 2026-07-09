@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Message } from 'ollama';
-import { Agent, extractTextToolCalls } from '../src/agent.js';
+import { Agent, coerceArgs, extractTextToolCalls } from '../src/agent.js';
 import { DEFAULT_CONFIG } from '../src/config.js';
 
 test('ignores plain text with no tool calls', () => {
@@ -95,6 +95,26 @@ test('accepts the {"tool": ..., "args": ...} shape some models emit', () => {
   assert.equal(calls.length, 1);
   assert.equal(calls[0].function.name, 'list_dir');
   assert.deepEqual(calls[0].function.arguments, { path: 'src' });
+});
+
+test('recovers a call whose arguments are a JSON-encoded string', () => {
+  // Some local models emit arguments as a string, not an object. Previously
+  // this was dropped, so the model reported writing a file that never got
+  // created. The arguments must be parsed so the tool actually runs.
+  const content = '{"name": "write_file", "arguments": "{\\"path\\": \\"a.py\\", \\"content\\": \\"print(1)\\"}"}';
+  const { calls } = extractTextToolCalls(content);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].function.name, 'write_file');
+  assert.deepEqual(calls[0].function.arguments, { path: 'a.py', content: 'print(1)' });
+});
+
+test('coerceArgs normalizes object, string, and invalid arguments', () => {
+  assert.deepEqual(coerceArgs({ path: 'x' }), { path: 'x' });
+  assert.deepEqual(coerceArgs('{"path":"x"}'), { path: 'x' });
+  assert.deepEqual(coerceArgs(''), {});
+  assert.deepEqual(coerceArgs('not json'), {});
+  assert.deepEqual(coerceArgs('[1,2]'), {}); // arrays are not valid tool args
+  assert.deepEqual(coerceArgs(null), {});
 });
 
 // --- Agent context management ---------------------------------------------------
