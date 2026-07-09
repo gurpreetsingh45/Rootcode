@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Message } from 'ollama';
-import { Agent, coerceArgs, extractTextToolCalls } from '../src/agent.js';
+import { Agent, coerceArgs, extractTextToolCalls, looksLikeUnexecutedToolCall } from '../src/agent.js';
 import { DEFAULT_CONFIG } from '../src/config.js';
 
 test('ignores plain text with no tool calls', () => {
@@ -147,6 +147,53 @@ test('ignores JSON objects that do not name a known tool', () => {
   assert.equal(extractTextToolCalls('{"name": "delete_everything", "arguments": {}}').calls.length, 0);
 });
 
+test('recovers a call with a trailing comma in its arguments', () => {
+  // Local models at temperature occasionally emit a stray trailing comma.
+  // Previously JSON.parse failed and the whole call was silently dropped, so
+  // the model reported writing a file that never got created.
+  const content = '{"name": "write_file", "arguments": {"path": "a.txt", "content": "hi",}}';
+  const { calls } = extractTextToolCalls(content);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].function.name, 'write_file');
+  assert.deepEqual(calls[0].function.arguments, { path: 'a.txt', content: 'hi' });
+});
+
+test('recovers a flat call whose parameters are siblings of "name"', () => {
+  // Some models drop the "arguments" wrapper: {"name": "write_file", "path": ...}.
+  // Without recovery the tool ran with empty args and failed.
+  const content = '{"name": "write_file", "path": "a.txt", "content": "hi"}';
+  const { calls } = extractTextToolCalls(content);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].function.name, 'write_file');
+  assert.deepEqual(calls[0].function.arguments, { path: 'a.txt', content: 'hi' });
+});
+
+test('flat-arg recovery does not turn unrelated prose JSON into a call', () => {
+  assert.equal(extractTextToolCalls('Set your config to {"name": "my-app", "version": "1.0.0"}.').calls.length, 0);
+});
+
+test('looksLikeUnexecutedToolCall detects failed/narrated tool calls', () => {
+  // JSON naming a known tool, but not recoverable as a call
+  assert.ok(looksLikeUnexecutedToolCall('{"name": "write_file", "arguments": {malformed'));
+  // Python-style call the model wrote instead of using the interface
+  assert.ok(looksLikeUnexecutedToolCall('write_file(path="a.txt", content="hi")'));
+});
+
+test('looksLikeUnexecutedToolCall ignores ordinary final answers', () => {
+  assert.equal(looksLikeUnexecutedToolCall('I updated the config and everything builds now.'), false);
+  assert.equal(looksLikeUnexecutedToolCall('You can use `write_file` for that, or edit it by hand.'), false);
+  assert.equal(looksLikeUnexecutedToolCall(''), false);
+});
+
+test('looksLikeUnexecutedToolCall ignores generated code that defines a tool-named function', () => {
+  // A final answer containing code that merely defines a function sharing a
+  // tool's name must not be mistaken for a tool call the model failed to emit.
+  assert.equal(looksLikeUnexecutedToolCall('Here is a helper:\n\ndef grep(pattern, text):\n    return []'), false);
+  assert.equal(looksLikeUnexecutedToolCall('function bash(cmd) {\n  return run(cmd);\n}'), false);
+  // But a genuinely narrated call is still detected.
+  assert.ok(looksLikeUnexecutedToolCall('grep(pattern="TODO", path="src")'));
+});
+
 // --- Agent context management ---------------------------------------------------
 
 function makeAgent(numCtx = 200): Agent {
@@ -170,6 +217,36 @@ test('prune truncates old tool outputs but keeps the system prompt and recent tu
   const tool = after.find((m) => m.role === 'tool');
   if (tool) assert.ok(tool.content.length <= 700, `old tool output should be truncated, got ${tool.content.length}`);
   assert.ok(after.length >= 8, 'keeps a minimum conversation window');
+});
+
+test('prune drops whole turns without orphaning a tool result', () => {
+  const agent = makeAgent(50); // budget ≈ 150 chars — forces a drop
+  const messages = agent.getMessages();
+  messages[0].content = 'sys';
+  // Oldest turn: an assistant tool call plus its (large) tool result.
+  messages.push({ role: 'user', content: 'do a thing' });
+  messages.push({
+    role: 'assistant',
+    content: '',
+    tool_calls: [{ function: { name: 'read_file', arguments: {} } }],
+  } as Message);
+  messages.push({ role: 'tool', content: 'y'.repeat(2000), tool_name: 'read_file' } as Message);
+  for (let i = 0; i < 5; i++) {
+    messages.push({ role: 'user', content: `q${i} ${'z'.repeat(40)}` });
+    messages.push({ role: 'assistant', content: `a${i} ${'z'.repeat(40)}` });
+  }
+  (agent as unknown as { prune: () => void }).prune();
+  const after = agent.getMessages();
+  assert.equal(after[0].role, 'system');
+  // The first message after the system prompt must never be an orphaned tool result.
+  assert.notEqual(after[1].role, 'tool');
+  // Every surviving tool result must still follow an assistant/tool message.
+  for (let i = 0; i < after.length; i++) {
+    if (after[i].role === 'tool') {
+      assert.ok(i > 0 && (after[i - 1].role === 'assistant' || after[i - 1].role === 'tool'),
+        `orphaned tool result at index ${i}`);
+    }
+  }
 });
 
 test('estimatedTokens survives messages with missing content', () => {

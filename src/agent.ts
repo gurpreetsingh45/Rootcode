@@ -6,6 +6,8 @@ import { buildSystemPrompt } from './systemPrompt.js';
 import { newSessionId, saveSession, sessionTitle, type Session } from './sessions.js';
 
 const MAX_AGENT_ITERATIONS = 40;
+/** How many times per run we re-prompt a model that narrated a tool call without emitting one. */
+const MAX_TOOL_CALL_NUDGES = 2;
 
 export interface PermissionRequest {
   toolName: string;
@@ -36,6 +38,7 @@ export class Agent {
   private sessionAllowed = new Set<string>();
   private aborted = false;
   private nextToolId = 1;
+  private nudgesUsed = 0;
   private sessionId = newSessionId();
   private sessionCreatedAt = new Date().toISOString();
   lastTokensPerSec = 0;
@@ -114,14 +117,22 @@ export class Agent {
         m.content = m.content.slice(0, 600) + '\n... [old tool output truncated]';
       }
     }
-    // Drop oldest non-system messages
+    // Drop the oldest turns whole. A turn runs from one user message up to (but
+    // not including) the next one, so an assistant's tool_calls and their tool
+    // results are always removed together — never leaving an orphaned tool
+    // result at the front, which produces an invalid message sequence.
     while (charCount() > budget && this.messages.length > 8) {
-      this.messages.splice(1, 2);
+      let end = 2;
+      while (end < this.messages.length && this.messages[end].role !== 'user') end++;
+      if (end >= this.messages.length) break; // only one turn left — keep it
+      if (this.messages.length - (end - 1) < 8) break; // keep a minimum window
+      this.messages.splice(1, end - 1);
     }
   }
 
   async run(userInput: string, cb: AgentCallbacks): Promise<void> {
     this.aborted = false;
+    this.nudgesUsed = 0;
     this.messages.push({ role: 'user', content: userInput });
     try {
       await this.runLoop(cb);
@@ -187,7 +198,24 @@ export class Agent {
         ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
       });
       if (content) cb.onTextDone(content);
-      if (toolCalls.length === 0) return; // done — model produced a final answer
+      if (toolCalls.length === 0) {
+        // The model produced no runnable tool call. If the text nevertheless
+        // looks like a tool call it failed to emit correctly (malformed JSON,
+        // Python-style call, plain-text instead of the function interface),
+        // don't silently accept it as "done" — nudge the model to re-issue it
+        // properly. Bounded so a stubborn model can't loop forever.
+        if (this.nudgesUsed < MAX_TOOL_CALL_NUDGES && looksLikeUnexecutedToolCall(content)) {
+          this.nudgesUsed++;
+          this.messages.push({
+            role: 'user',
+            content:
+              '[Your last message looks like a tool call, but no tool actually ran — it was not emitted through the function-calling interface (or the JSON could not be parsed). Nothing has changed on disk yet. Re-issue the call now as a proper tool call. Do not claim the work is done until a tool has actually run.]',
+          });
+          cb.onStatus('retrying tool call');
+          continue;
+        }
+        return; // done — model produced a final answer
+      }
 
       for (const call of toolCalls) {
         if (this.aborted) throw new InterruptedError();
@@ -294,14 +322,29 @@ export function coerceArgs(raw: unknown): Record<string, unknown> {
   if (typeof raw === 'string') {
     const trimmed = raw.trim();
     if (!trimmed) return {};
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (isPlainObject(parsed)) return parsed;
-    } catch {
-      /* not JSON — fall through to empty args */
-    }
+    const parsed = lenientJsonParse(trimmed);
+    if (isPlainObject(parsed)) return parsed;
   }
   return {};
+}
+
+/**
+ * Parse JSON, tolerating the small deviations local models produce. Falls back
+ * to a trailing-comma-stripped retry (e.g. `{"a":1,}` or `[1,2,]`) so a single
+ * stray comma doesn't silently drop an otherwise-valid tool call. Returns
+ * `undefined` if the text still isn't valid JSON.
+ */
+function lenientJsonParse(s: string): unknown {
+  try {
+    return JSON.parse(s);
+  } catch {
+    /* try again after cleaning up common near-miss mistakes */
+  }
+  try {
+    return JSON.parse(s.replace(/,(\s*[}\]])/g, '$1'));
+  } catch {
+    return undefined;
+  }
 }
 
 /** Extract a balanced JSON object starting at `start`, respecting strings. */
@@ -349,22 +392,27 @@ export function extractTextToolCalls(content: string): { calls: ToolCall[]; clea
     if (match.index < scanFrom) continue; // inside a previously consumed object
     const json = scanJsonObject(content, match.index);
     if (!json) continue;
-    try {
-      const obj = JSON.parse(json);
-      const fn = typeof obj.function === 'object' && obj.function ? obj.function : obj;
-      const name: unknown = fn.name ?? fn.tool ?? fn.function_name ?? fn.recipient_name;
-      const rawArgs: unknown = fn.arguments ?? fn.parameters ?? fn.args ?? {};
-      // Some models emit arguments as a JSON-encoded string rather than an
-      // object; coerceArgs parses those so the call still runs.
-      const args = coerceArgs(rawArgs);
-      if (typeof name === 'string' && TOOLS[name] && (isPlainObject(rawArgs) || typeof rawArgs === 'string')) {
-        calls.push({ function: { name, arguments: args } } as ToolCall);
-        ranges.push([match.index, match.index + json.length]);
-        scanFrom = match.index + json.length;
-        starter.lastIndex = scanFrom;
-      }
-    } catch {
-      /* not valid JSON — keep scanning */
+    const obj = lenientJsonParse(json);
+    if (!isPlainObject(obj)) continue; // not valid JSON — keep scanning
+    const fn = isPlainObject(obj.function) ? obj.function : obj;
+    const name: unknown = fn.name ?? fn.tool ?? fn.function_name ?? fn.recipient_name;
+    if (typeof name !== 'string' || !TOOLS[name]) continue; // not a known tool
+    let rawArgs: unknown = fn.arguments ?? fn.parameters ?? fn.args;
+    if (rawArgs === undefined) {
+      // Flat form: some models drop the "arguments" wrapper and put the
+      // parameters as siblings of "name", e.g.
+      // {"name": "write_file", "path": "a.txt", "content": "hi"}. Treat the
+      // remaining keys as the arguments so the call isn't run with empty args.
+      const { name: _n, tool: _t, function_name: _fn, recipient_name: _rn, function: _f, ...rest } = fn;
+      rawArgs = rest;
+    }
+    // Some models emit arguments as a JSON-encoded string rather than an
+    // object; coerceArgs parses those so the call still runs.
+    if (isPlainObject(rawArgs) || typeof rawArgs === 'string') {
+      calls.push({ function: { name, arguments: coerceArgs(rawArgs) } } as ToolCall);
+      ranges.push([match.index, match.index + json.length]);
+      scanFrom = match.index + json.length;
+      starter.lastIndex = scanFrom;
     }
   }
   if (calls.length === 0) return { calls, cleaned: content };
@@ -384,6 +432,28 @@ export function extractTextToolCalls(content: string): { calls: ToolCall[]; clea
     .replace(/\n{3,}/g, '\n\n')
     .trim();
   return { calls, cleaned };
+}
+
+/**
+ * True if `content` looks like the model *tried* to call a tool but no runnable
+ * call could be recovered from it — e.g. malformed JSON, a Python-style
+ * `write_file(...)` call, or a tool named in plain text. Used to re-prompt the
+ * model instead of silently reporting a task "done" that never touched disk.
+ *
+ * Deliberately conservative: it only fires when a KNOWN tool name appears in a
+ * call-like context, so ordinary final answers that merely mention a tool in
+ * prose are not mistaken for failed calls.
+ */
+export function looksLikeUnexecutedToolCall(content: string): boolean {
+  if (!content.trim()) return false;
+  const names = Object.keys(TOOLS).join('|');
+  // A known tool named as the target of a JSON call: {"name": "write_file", ...}
+  const jsonCall = new RegExp(`"(?:name|tool|function_name|recipient_name)"\\s*:\\s*"(?:${names})"`);
+  // A known tool invoked Python/JS-style: write_file( ... ). Exclude *definitions*
+  // that merely share a tool's name (e.g. `def grep(` or `function bash(` in
+  // generated code) so an ordinary final answer isn't mistaken for a failed call.
+  const fnCall = new RegExp(`(?<!\\b(?:def|func|fn|function|class|async)\\s+)\\b(?:${names})\\s*\\(`);
+  return jsonCall.test(content) || fnCall.test(content);
 }
 
 export class InterruptedError extends Error {
