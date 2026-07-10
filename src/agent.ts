@@ -50,7 +50,7 @@ export class Agent {
 
   /** Start a fresh conversation (and a fresh session on disk). */
   reset(): void {
-    this.messages = [{ role: 'system', content: buildSystemPrompt() }];
+    this.messages = [{ role: 'system', content: buildSystemPrompt(this.config.numCtx) }];
     this.sessionId = newSessionId();
     this.sessionCreatedAt = new Date().toISOString();
   }
@@ -59,7 +59,7 @@ export class Agent {
   restoreSession(session: Session): void {
     this.messages = session.messages;
     // Regenerate the system prompt: environment context (date, files) may be stale
-    this.messages[0] = { role: 'system', content: buildSystemPrompt() };
+    this.messages[0] = { role: 'system', content: buildSystemPrompt(this.config.numCtx) };
     this.sessionId = session.id;
     this.sessionCreatedAt = session.createdAt;
   }
@@ -296,7 +296,7 @@ export class Agent {
       options: { num_ctx: this.config.numCtx },
     });
     // Same conversation, summarized — keep the session id, just replace messages
-    this.messages = [{ role: 'system', content: buildSystemPrompt() }];
+    this.messages = [{ role: 'system', content: buildSystemPrompt(this.config.numCtx) }];
     this.messages.push({
       role: 'user',
       content: `[Conversation compacted. Summary of the session so far:]\n${res.message.content}`,

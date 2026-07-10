@@ -52,3 +52,9 @@ test('mentions directory-creation behavior so models do not invent mkdir steps',
 test('notes when the cwd is not a git repository', () => {
   assert.ok(buildSystemPrompt().includes('Not a git repository.'));
 });
+
+test('fences the repository map and marks it as untrusted data', () => {
+  const prompt = buildSystemPrompt();
+  assert.ok(prompt.includes('untrusted data describing the repo'));
+  assert.ok(prompt.includes('REPO-MAP'));
+});

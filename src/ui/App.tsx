@@ -3,6 +3,7 @@ import { Box, Static, Text, useApp, useInput } from 'ink';
 import path from 'node:path';
 import { Agent, InterruptedError, type PermissionDecision, type PermissionRequest } from '../agent.js';
 import { saveConfig } from '../config.js';
+import { INIT_PROMPT } from '../systemPrompt.js';
 import { formatAge, listSessions, loadSession } from '../sessions.js';
 import { appendInputHistory, loadInputHistory } from '../history.js';
 import { TOOLS, clearTodos, getTodos, type DiffLine, type TodoItem } from '../tools.js';
@@ -17,6 +18,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   { name: '/model', description: 'show or switch model (/model <name>)' },
   { name: '/models', description: 'list installed Ollama models' },
   { name: '/tools', description: 'list available tools' },
+  { name: '/init', description: 'analyze the repo and write ROOTCODE.md' },
   { name: '/clear', description: 'clear conversation and start fresh' },
   { name: '/resume', description: 'list past sessions, /resume <n> to restore one' },
   { name: '/compact', description: 'summarize conversation to free context' },
@@ -27,6 +29,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
 const HELP_TEXT = `commands:
   /model <name>   switch model (persisted) · /models lists installed ones
   /tools          list tools    /clear    reset conversation
+  /init           analyze the repo and write ROOTCODE.md
   /resume         list past sessions in this directory, /resume <n> restores one
   /compact        summarize history to free context
   /yolo           toggle skipping permission prompts
@@ -161,6 +164,10 @@ export function App({
               .join('\n'),
           });
           return true;
+        case '/init':
+          addItem({ kind: 'info', text: 'analyzing the repository to write ROOTCODE.md…' });
+          void runAgent(INIT_PROMPT);
+          return true;
         case '/yolo':
           agent.config.yolo = !agent.config.yolo;
           addItem({
@@ -240,7 +247,7 @@ export function App({
           return false;
       }
     },
-    [agent, addItem, exit],
+    [agent, addItem, exit, runAgent],
   );
 
   const handleSubmit = useCallback(
