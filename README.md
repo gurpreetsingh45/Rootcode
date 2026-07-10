@@ -13,7 +13,8 @@ Built with TypeScript + [Ink](https://github.com/vadimdemedes/ink) (the same ter
 - **Session management** — conversations auto-save per directory; `rootcode -c` resumes the latest one and `/resume` lists and restores past sessions. `/compact` summarizes history to free context, `/clear` starts fresh, automatic pruning keeps you inside the context window
 - **Input niceties** — persistent history (up/down), slash-command completion (tab), multiline input (`\` + enter), esc to interrupt the agent mid-task
 - **Headless mode** — `rootcode -p "..."` for scripting and pipelines
-- **Project instructions** — put a `ROOTCODE.md` (or `AGENTS.md`/`CLAUDE.md`) in your repo and it's loaded into the system prompt
+- **Repo awareness** — a compact, auto-generated map of the project (language, build/test commands, directory layout) is injected into the system prompt so the model starts oriented instead of burning turns exploring
+- **Project instructions** — put a `ROOTCODE.md` (or `AGENTS.md`/`CLAUDE.md`) in your repo and it's loaded into the system prompt; run `/init` to have the agent generate one for you
 
 ## Requirements
 
@@ -54,6 +55,7 @@ rootcode -m llama3.1 --ctx 32768          # pick model / context size
 | `/model <name>` | switch model (persisted to config) |
 | `/models` | list installed Ollama models |
 | `/tools` | list available tools |
+| `/init` | analyze the repo and write a `ROOTCODE.md` |
 | `/clear` | reset the conversation |
 | `/resume` | list past sessions in this directory; `/resume <n>` restores one |
 | `/compact` | summarize history to free context |

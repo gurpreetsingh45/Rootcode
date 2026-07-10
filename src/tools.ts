@@ -31,7 +31,7 @@ export interface ToolSpec {
 
 const MAX_OUTPUT_CHARS = 12_000;
 const MAX_READ_LINES = 1500;
-const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.venv', '__pycache__', '.next', 'target', 'vendor']);
+export const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.venv', '__pycache__', '.next', 'target', 'vendor']);
 
 function truncate(text: string, limit = MAX_OUTPUT_CHARS): string {
   if (text.length <= limit) return text;
